@@ -19,4 +19,5 @@ export const config = {
     useMock: process.env.USE_MOCK_AI === 'true',
   },
   mockGHL: process.env.USE_MOCK_GHL === 'true',
+  corsOrigin: process.env.CORS_ORIGIN || 'http://localhost:5173',
 };

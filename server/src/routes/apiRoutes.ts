@@ -6,6 +6,11 @@ import { config } from '../config/env';
 const router = Router();
 const ghlClient = new GHLClient();
 
+// Simple alphanumeric + dash/underscore validator for IDs
+function isValidId(id: string): boolean {
+  return typeof id === 'string' && id.length > 0 && id.length <= 128 && /^[a-zA-Z0-9_\-]+$/.test(id);
+}
+
 // Webhook listener for GHL workflows / triggers
 router.post('/webhook/ghl', handleGHLWebhook);
 
@@ -13,6 +18,11 @@ router.post('/webhook/ghl', handleGHLWebhook);
 router.get('/pipeline', async (req, res) => {
   try {
     const locationId = (req.query.locationId as string) || config.ghl.locationId;
+    if (!isValidId(locationId)) {
+      res.status(400).json({ success: false, error: 'Invalid locationId parameter.' });
+      return;
+    }
+
     const opportunities = await ghlClient.getOpportunities(locationId);
 
     const enrichedOpportunities = [];
@@ -74,7 +84,7 @@ router.get('/pipeline', async (req, res) => {
     });
   } catch (error: any) {
     console.error('Error in /api/pipeline:', error.message, error.stack);
-    res.status(500).json({ success: false, error: error.message });
+    res.status(500).json({ success: false, error: 'Internal server error.' });
   }
 });
 
@@ -82,7 +92,17 @@ router.get('/pipeline', async (req, res) => {
 router.post('/analyze/:opportunityId', async (req, res) => {
   try {
     const { opportunityId } = req.params;
+    if (!isValidId(opportunityId)) {
+      res.status(400).json({ success: false, error: 'Invalid opportunityId parameter.' });
+      return;
+    }
+
     const locationId = (req.body.locationId as string) || config.ghl.locationId;
+    if (!isValidId(locationId)) {
+      res.status(400).json({ success: false, error: 'Invalid locationId parameter.' });
+      return;
+    }
+
     dealAnalysisStore.delete(opportunityId);
 
     let opp: any = null;
@@ -94,7 +114,8 @@ router.post('/analyze/:opportunityId', async (req, res) => {
     const analysis = await PipelineManager.processOpportunityEvent(opportunityId, locationId, opp || undefined);
     res.json({ success: true, analysis });
   } catch (error: any) {
-    res.status(500).json({ success: false, error: error.message });
+    console.error('Error in /api/analyze:', error.message, error.stack);
+    res.status(500).json({ success: false, error: 'Internal server error.' });
   }
 });
 

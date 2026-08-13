@@ -1,12 +1,18 @@
 import { Request, Response } from 'express';
 import { GHLClient } from '../ghl/ghlClient';
 import { AISentimentEngine, DealHealthAnalysis } from '../ai/sentimentEngine';
+import { config } from '../config/env';
 
 // In-memory cache store for real-time dashboard updates
 export const dealAnalysisStore: Map<string, DealHealthAnalysis> = new Map();
 
 const ghlClient = new GHLClient();
 const aiEngine = new AISentimentEngine();
+
+// Simple alphanumeric + dash/underscore validator for IDs
+function isValidId(id: unknown): id is string {
+  return typeof id === 'string' && id.length > 0 && id.length <= 128 && /^[a-zA-Z0-9_\-]+$/.test(id);
+}
 
 export class PipelineManager {
   static async processOpportunityEvent(opportunityId: string, locationId: string, preFetchedOpp?: any) {
@@ -16,9 +22,9 @@ export class PipelineManager {
         opportunity = { id: opportunityId, name: 'Opportunity', contactId: '' };
       }
 
-      if (!opportunity) throw new Error(`Opportunity ${opportunityId} not found`);
+      if (!opportunity) throw new Error('Opportunity not found');
 
-      // 2. Fetch Contact & Conversation Notes from GHL API v2 (with fail-safe fallbacks)
+      // Fetch Contact & Conversation Notes from GHL API v2 (with fail-safe fallbacks)
       let contact: any = { id: opportunity.contactId, name: opportunity.name, email: '', phone: '', tags: [] };
       let notes: any[] = [];
       try {
@@ -28,16 +34,16 @@ export class PipelineManager {
         }
       } catch (e) {}
 
-      // 3. Run AI Sentiment Engine Analysis
+      // Run AI Sentiment Engine Analysis
       const analysis = await aiEngine.analyzeOpportunity(opportunity, contact, notes);
 
-      // 4. Save analysis to internal store for dashboard live sync
+      // Save analysis to internal store for dashboard live sync
       dealAnalysisStore.set(opportunity.id, analysis);
 
-      // 5. Sync back to GoHighLevel (Add AI Note + Tags) safely
+      // Sync back to GoHighLevel (Add AI Note + Tags) safely
       if (opportunity.contactId) {
         try {
-          const aiNoteBody = `🤖 [AI COPILOT INSIGHTS]
+          const aiNoteBody = `[AI COPILOT INSIGHTS]
 Health Score: ${analysis.dealHealthScore}/100 (${analysis.sentimentCategory})
 Close Prob: ${analysis.estimatedCloseProbability}% | Churn Risk: ${analysis.churnRiskScore}%
 Summary: ${analysis.aiSummary}
@@ -62,7 +68,14 @@ Timestamp: ${analysis.analyzedAt}`;
 }
 
 export const handleGHLWebhook = async (req: Request, res: Response) => {
-  const { type, opportunityId, locationId, contactId } = req.body;
+  const { type, opportunityId, locationId } = req.body;
+
+  // Validate webhook payload
+  if (!isValidId(opportunityId)) {
+    res.status(400).json({ status: 'error', error: 'Invalid or missing opportunityId.' });
+    return;
+  }
+
   console.log(`[GHL WEBHOOK INBOUND] Type: ${type}, OpportunityId: ${opportunityId}`);
 
   // Immediate response to GHL webhook caller
@@ -70,11 +83,8 @@ export const handleGHLWebhook = async (req: Request, res: Response) => {
 
   // Async background processing
   try {
-    const oppId = opportunityId;
-    const locId = locationId || config.ghl.locationId;
-    if (oppId) {
-      await PipelineManager.processOpportunityEvent(oppId, locId);
-    }
+    const locId = isValidId(locationId) ? locationId : config.ghl.locationId;
+    await PipelineManager.processOpportunityEvent(opportunityId, locId);
   } catch (err: any) {
     console.error('Webhook async processing failed:', err.message);
   }

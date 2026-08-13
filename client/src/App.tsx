@@ -59,6 +59,8 @@ interface ApiResponse {
   opportunities: Deal[];
 }
 
+const API_BASE_URL = import.meta.env.VITE_API_BASE_URL || '';
+
 export default function App() {
   const [data, setData] = useState<ApiResponse | null>(null);
   const [loading, setLoading] = useState(true);
@@ -70,7 +72,7 @@ export default function App() {
   const fetchPipeline = async () => {
     setLoading(true);
     try {
-      const res = await fetch('http://localhost:4000/api/pipeline');
+      const res = await fetch(`${API_BASE_URL}/api/pipeline`);
       const json: ApiResponse = await res.json();
       if (json && json.success && Array.isArray(json.opportunities)) {
         setData(json);
@@ -90,7 +92,7 @@ export default function App() {
   const reAnalyzeDeal = async (oppId: string) => {
     setAnalyzingId(oppId);
     try {
-      const res = await fetch(`http://localhost:4000/api/analyze/${oppId}`, {
+      const res = await fetch(`${API_BASE_URL}/api/analyze/${oppId}`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({})
